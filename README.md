@@ -6,6 +6,10 @@ The uploaded dataset has been trained and evaluated. See [PROJECT_REPORT.md](PRO
 
 The interface uses a responsive teal and navy theme. For GitHub upload and public hosting steps, see [GITHUB_DEPLOYMENT.md](GITHUB_DEPLOYMENT.md).
 
+## Live app
+
+[Open LungLens](https://lung-abnormality-detection-ytsckck5z9b6nqpyyzbsfy.streamlit.app/)
+
 The supplied data is arranged at the project root:
 
 ```text

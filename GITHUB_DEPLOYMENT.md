@@ -1,5 +1,7 @@
 # Put the project on GitHub and publish the web app
 
+Live app: [Open LungLens](https://lung-abnormality-detection-ytsckck5z9b6nqpyyzbsfy.streamlit.app/)
+
 ## GitHub page vs. running app
 
 Opening this repository on GitHub shows the source files and README. It does **not** run `app.py`. GitHub Pages serves static files; this Streamlit project needs a Python server. To use it in a browser, keep the source in GitHub and deploy it with [Streamlit Community Cloud](https://share.streamlit.io/). Streamlit Community Cloud reads the repository, installs `requirements.txt`, and runs the selected Python file.
