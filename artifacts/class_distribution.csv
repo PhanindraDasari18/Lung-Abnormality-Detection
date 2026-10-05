@@ -1,0 +1,16 @@
+label,images
+Hernia,46
+Pneumonia,184
+Edema,196
+Emphysema,318
+Fibrosis,379
+Cardiomegaly,396
+Pleural_Thickening,468
+Mass,470
+Consolidation,557
+Nodule,666
+Pneumothorax,670
+Atelectasis,1350
+Effusion,1382
+Infiltration,2260
+No_Finding,8753
