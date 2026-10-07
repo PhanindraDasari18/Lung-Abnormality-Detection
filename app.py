@@ -7,6 +7,7 @@ from PIL import Image
 
 from lung_svm.cli import decision_scores
 from lung_svm.features import image_hog
+from lung_svm.ood import ood_distances
 
 
 st.set_page_config(
@@ -69,9 +70,18 @@ st.markdown(
 )
 
 model_path = Path("artifacts/lung_svm_model.joblib")
-if not model_path.is_file():
-    st.error("The trained model is missing. Add `artifacts/lung_svm_model.joblib` to the project before starting the app.")
+
+
+@st.cache_resource
+def load_model_assets():
+    return joblib.load(model_path) if model_path.is_file() else None
+
+
+model_bundle = load_model_assets()
+if model_bundle is None:
+    st.error("No trained model was found. Add the trained model artifacts before starting the app.")
     st.stop()
+st.caption("Active model: HOG + PCA + SVM, with an out-of-distribution image rejection gate")
 
 left, right = st.columns([1.12, 0.88], gap="large")
 with left:
@@ -104,23 +114,30 @@ with right:
         unsafe_allow_html=True,
     )
     if classify and image is not None:
-        with st.spinner("Extracting image features and running the classifier…"):
-            bundle = joblib.load(model_path)
+        with st.spinner("Checking the image and running the classifier…"):
             with TemporaryDirectory(dir="artifacts") as temp_dir:
                 temp_path = Path(temp_dir) / "upload.png"
                 image.save(temp_path)
-                features = image_hog(temp_path, bundle["image_size"])[None, :]
-            transformed = bundle["pca"].transform(bundle["scaler"].transform(features))
-            scores = decision_scores(bundle["models"], transformed)[0]
-            findings = [
-                (name, float(score))
-                for name, score, threshold in zip(
-                    bundle["diseases"], scores, bundle["thresholds"]
-                )
-                if score >= threshold
-            ]
+                features = image_hog(temp_path, model_bundle["image_size"])[None, :]
+            transformed = model_bundle["pca"].transform(model_bundle["scaler"].transform(features))
+            ood_distance = None
+            if "ood_reference" in model_bundle:
+                ood_distance = float(ood_distances(model_bundle["ood_reference"], transformed)[0])
+            if ood_distance is not None and ood_distance > model_bundle["ood_threshold"]:
+                findings = None
+            else:
+                scores = decision_scores(model_bundle["models"], transformed)[0]
+                findings = [
+                    (name, float(score))
+                    for name, score, threshold in zip(
+                        model_bundle["diseases"], scores, model_bundle["thresholds"]
+                    )
+                    if score >= threshold
+                ]
 
-        if findings:
+        if findings is None:
+            st.warning("This image does not look sufficiently similar to the chest X-rays used to train the model. Upload a chest X-ray to get a prediction.")
+        elif findings:
             st.markdown('<div class="result-title">Predicted findings</div>', unsafe_allow_html=True)
             for name, score in sorted(findings, key=lambda item: item[1], reverse=True):
                 st.markdown(

@@ -12,6 +12,7 @@ from .eda import make_eda
 from .evaluate import evaluate
 from .features import extract_many, image_hog
 from .model import decision_scores, fit_classifiers, fit_preprocessor, tune_thresholds
+from .ood import fit_ood_reference, ood_distances
 
 
 def train(args):
@@ -30,6 +31,10 @@ def train(args):
     scaler, pca, x_train = fit_preprocessor(x[splits["train"]], args.pca_components)
     x_val = pca.transform(scaler.transform(x[splits["validation"]])).astype(np.float32)
     x_test = pca.transform(scaler.transform(x[splits["test"]])).astype(np.float32)
+    reference, ood_threshold, val_ood = fit_ood_reference(x_train, x_val, seed=args.seed)
+    test_ood = ood_distances(reference, x_test)
+    print(f"OOD distance gate (99th percentile of validation X-rays): {ood_threshold:.3f}; "
+          f"held-out X-rays rejected: {(test_ood > ood_threshold).mean():.1%}")
     models = fit_classifiers(x_train, y[splits["train"]])
     val_scores = decision_scores(models, x_val)
     thresholds = tune_thresholds(y[splits["validation"]], val_scores)
@@ -40,7 +45,8 @@ def train(args):
     print("\nMacro averages:")
     print(table[["roc_auc", "precision", "recall", "f1"]].mean().to_string())
     bundle = {"models": models, "scaler": scaler, "pca": pca, "thresholds": thresholds,
-              "diseases": DISEASES, "image_size": args.image_size}
+              "diseases": DISEASES, "image_size": args.image_size,
+              "ood_reference": reference, "ood_threshold": ood_threshold}
     Path(args.output).mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, Path(args.output) / "lung_svm_model.joblib", compress=3)
     print(f"\nSaved model and reports under {Path(args.output).resolve()}")
@@ -50,6 +56,12 @@ def predict(args):
     bundle = joblib.load(args.model)
     feature = image_hog(args.image, bundle["image_size"])[None, :]
     x = bundle["pca"].transform(bundle["scaler"].transform(feature))
+    if "ood_reference" in bundle:
+        distance = float(ood_distances(bundle["ood_reference"], x)[0])
+        if distance > bundle["ood_threshold"]:
+            print(f"Prediction: rejected (image is outside the training X-ray range; distance {distance:.3f})")
+            print("Please upload a chest X-ray similar to the images used to train this educational model.")
+            return
     scores = decision_scores(bundle["models"], x)[0]
     selected = [(name, float(score)) for name, score, threshold in zip(
         bundle["diseases"], scores, bundle["thresholds"]) if score >= threshold]

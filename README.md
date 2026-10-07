@@ -4,7 +4,7 @@ An educational multi-label chest X-ray classification project. It extracts HOG i
 
 The uploaded dataset has been trained and evaluated. See [PROJECT_REPORT.md](PROJECT_REPORT.md) for the measured results and [artifacts/](artifacts/) for the model, metrics, and figures.
 
-The interface uses a responsive teal and navy theme. For GitHub upload and public hosting steps, see [GITHUB_DEPLOYMENT.md](GITHUB_DEPLOYMENT.md).
+The interface uses a responsive teal and navy theme. It now rejects images that fall outside a distance range calibrated from validation chest X-rays instead of always forcing a disease prediction. This is a basic out-of-distribution check, not proof that an accepted upload is a chest X-ray. For GitHub upload and public hosting steps, see [GITHUB_DEPLOYMENT.md](GITHUB_DEPLOYMENT.md).
 
 ## Live app
 
@@ -66,7 +66,7 @@ artifacts/
 python -m lung_svm.cli predict path\to\chest_xray.png
 ```
 
-The CLI prints every abnormality above its validation-selected threshold, or `No Finding` when none pass. LinearSVC scores are margins, not calibrated probabilities.
+The CLI rejects an image whose HOG/PCA representation is too far from the training X-rays; otherwise, it prints abnormalities above their validation-selected thresholds, or `No Finding` when none pass. LinearSVC scores are margins, not calibrated probabilities.
 
 ## Run the optional demo
 
@@ -81,6 +81,7 @@ Train the model first; the app expects `artifacts/lung_svm_model.joblib`.
 - `Finding Labels` is split on `|`; the 14 abnormalities are independent binary targets. `No Finding` is derived when all 14 labels are zero, not trained as a separate disease.
 - All images for a patient stay within one split to reduce patient leakage. Group splitting is reproducible, but not label-stratified; inspect supports in the generated report, especially for rare findings.
 - `class_weight="balanced"` addresses training imbalance. Thresholds are tuned on validation data only, then evaluated on untouched test data.
+- An out-of-distribution distance gate is calibrated on validation X-rays. It is intended to reject obvious unrelated images, but needs a representative external set of non-X-ray images to measure how well it rejects chairs, cars, and other objects. Unusual or low-quality X-rays may also be rejected.
 - HOG may miss subtle image patterns, dataset labels may be noisy, and `No Finding` does not guarantee that a patient is healthy. This system is not suitable for clinical decisions.
 
 ## Project layout
