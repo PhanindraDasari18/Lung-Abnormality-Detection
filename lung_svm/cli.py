@@ -31,11 +31,14 @@ def train(args):
     scaler, pca, x_train = fit_preprocessor(x[splits["train"]], args.pca_components)
     x_val = pca.transform(scaler.transform(x[splits["validation"]])).astype(np.float32)
     x_test = pca.transform(scaler.transform(x[splits["test"]])).astype(np.float32)
-    reference, ood_threshold, val_ood = fit_ood_reference(x_train, x_val, seed=args.seed)
+    reference, ood_threshold, _ = fit_ood_reference(
+        x_train, x_val, quantile=args.ood_quantile, seed=args.seed
+    )
     test_ood = ood_distances(reference, x_test)
-    print(f"OOD distance gate (99th percentile of validation X-rays): {ood_threshold:.3f}; "
+    print(f"OOD distance gate ({args.ood_quantile:.0%} validation percentile): {ood_threshold:.3f}; "
           f"held-out X-rays rejected: {(test_ood > ood_threshold).mean():.1%}")
-    models = fit_classifiers(x_train, y[splits["train"]])
+    print(f"Training {args.classifier.upper()} SVM heads")
+    models = fit_classifiers(x_train, y[splits["train"]], classifier=args.classifier)
     val_scores = decision_scores(models, x_val)
     thresholds = tune_thresholds(y[splits["validation"]], val_scores)
     test_scores = decision_scores(models, x_test)
@@ -46,7 +49,8 @@ def train(args):
     print(table[["roc_auc", "precision", "recall", "f1"]].mean().to_string())
     bundle = {"models": models, "scaler": scaler, "pca": pca, "thresholds": thresholds,
               "diseases": DISEASES, "image_size": args.image_size,
-              "ood_reference": reference, "ood_threshold": ood_threshold}
+              "ood_reference": reference, "ood_threshold": ood_threshold,
+              "classifier": args.classifier}
     Path(args.output).mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, Path(args.output) / "lung_svm_model.joblib", compress=3)
     print(f"\nSaved model and reports under {Path(args.output).resolve()}")
@@ -60,7 +64,7 @@ def predict(args):
         distance = float(ood_distances(bundle["ood_reference"], x)[0])
         if distance > bundle["ood_threshold"]:
             print(f"Prediction: rejected (image is outside the training X-ray range; distance {distance:.3f})")
-            print("Please upload a chest X-ray similar to the images used to train this educational model.")
+            print("No disease prediction is shown because the classifier may be unreliable for this image.")
             return
     scores = decision_scores(bundle["models"], x)[0]
     selected = [(name, float(score)) for name, score, threshold in zip(
@@ -85,6 +89,10 @@ def main():
     fit.add_argument("--output", type=Path, default=Path("artifacts"))
     fit.add_argument("--image-size", type=int, default=96)
     fit.add_argument("--pca-components", type=int, default=256)
+    fit.add_argument("--ood-quantile", type=float, default=0.90,
+                     help="Validation X-ray distance percentile used as the image rejection cutoff")
+    fit.add_argument("--classifier", choices=["linear", "rbf"], default="linear",
+                     help="One-vs-rest SVM type; RBF is slower but models nonlinear boundaries")
     fit.add_argument("--seed", type=int, default=42)
     fit.set_defaults(func=train)
     pred = sub.add_parser("predict", help="Predict abnormalities for one X-ray")

@@ -5,7 +5,7 @@ from sklearn.neighbors import NearestNeighbors
 
 
 def fit_ood_reference(train_features: np.ndarray, validation_features: np.ndarray,
-                      quantile: float = 0.99, max_reference: int = 2048,
+                      quantile: float = 0.90, max_reference: int = 2048,
                       seed: int = 42) -> tuple[np.ndarray, float, np.ndarray]:
     """Calibrate a nearest-neighbor distance gate using patient-held-out X-rays."""
     rng = np.random.default_rng(seed)

@@ -2,12 +2,38 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import joblib
+import pandas as pd
 import streamlit as st
 from PIL import Image
 
 from lung_svm.cli import decision_scores
 from lung_svm.features import image_hog
 from lung_svm.ood import ood_distances
+
+
+def show_score_table(scores, bundle, accepted=True):
+    rows = []
+    for name, score, threshold in zip(
+        bundle["diseases"], scores, bundle["thresholds"]
+    ):
+        score = float(score)
+        threshold = float(threshold)
+        delta = score - threshold
+        rows.append({
+            "Finding": name.replace("_", " "),
+            "SVM margin (w*x + b)": score,
+            "SVM boundary": 0.0,
+            "Selected cutoff": threshold,
+            "Margin minus cutoff": delta,
+            "Result": (
+                "Selected" if delta >= 0 and accepted
+                else "Above cutoff (image rejected)" if delta >= 0
+                else "Below cutoff"
+            ),
+        })
+    table = pd.DataFrame(rows).sort_values("Margin minus cutoff", ascending=False)
+    with st.expander("All SVM scores and decision cutoffs", expanded=False):
+        st.dataframe(table, hide_index=True, use_container_width=True)
 
 
 st.set_page_config(
@@ -81,7 +107,11 @@ model_bundle = load_model_assets()
 if model_bundle is None:
     st.error("No trained model was found. Add the trained model artifacts before starting the app.")
     st.stop()
-st.caption("Active model: HOG + PCA + SVM, with an out-of-distribution image rejection gate")
+classifier_name = model_bundle.get("classifier", "linear").upper()
+st.caption(
+    f"Active model: HOG + PCA + {classifier_name} SVM, "
+    "with an out-of-distribution image rejection gate"
+)
 
 left, right = st.columns([1.12, 0.88], gap="large")
 with left:
@@ -110,7 +140,7 @@ with right:
     st.markdown(
         '<div class="panel"><div class="panel-label">Step 2</div>'
         '<h3 style="margin:.15rem 0 .35rem 0">Review the output</h3>'
-        '<p class="fine-print">Predicted labels are shown with SVM decision margins, not probabilities.</p></div>',
+        '<p class="fine-print">The output includes all 14 SVM margins and their label cutoffs. Margins are not probabilities.</p></div>',
         unsafe_allow_html=True,
     )
     if classify and image is not None:
@@ -123,10 +153,10 @@ with right:
             ood_distance = None
             if "ood_reference" in model_bundle:
                 ood_distance = float(ood_distances(model_bundle["ood_reference"], transformed)[0])
+            scores = decision_scores(model_bundle["models"], transformed)[0]
             if ood_distance is not None and ood_distance > model_bundle["ood_threshold"]:
                 findings = None
             else:
-                scores = decision_scores(model_bundle["models"], transformed)[0]
                 findings = [
                     (name, float(score))
                     for name, score, threshold in zip(
@@ -136,21 +166,30 @@ with right:
                 ]
 
         if findings is None:
-            st.warning("This image does not look sufficiently similar to the chest X-rays used to train the model. Upload a chest X-ray to get a prediction.")
+            st.warning("This image is outside the model's supported image range. No disease prediction is shown because the classifier may be unreliable for this image.")
+            if ood_distance is not None:
+                st.caption(
+                    f"Image-distance check: {ood_distance:.3f}; accepted cutoff: "
+                    f"{model_bundle['ood_threshold']:.3f}. The diagnostic scores below are shown "
+                    "for transparency only and are not accepted as predictions."
+                )
+                show_score_table(scores, model_bundle, accepted=False)
         elif findings:
             st.markdown('<div class="result-title">Predicted findings</div>', unsafe_allow_html=True)
             for name, score in sorted(findings, key=lambda item: item[1], reverse=True):
                 st.markdown(
                     f'<div class="result"><div class="result-title">{name.replace("_", " ")}</div>'
-                    f'<div class="result-note">Decision margin: {score:.3f}</div></div>',
+                    f'<div class="result-note">Signed SVM margin: {score:.3f}</div></div>',
                     unsafe_allow_html=True,
                 )
+            show_score_table(scores, model_bundle)
         else:
             st.markdown(
                 '<div class="result"><div class="result-title">No Finding</div>'
-                '<div class="result-note">No abnormality passed its selected threshold.</div></div>',
+                '<div class="result-note">No abnormality passed its validation-tuned score cutoff.</div></div>',
                 unsafe_allow_html=True,
             )
+            show_score_table(scores, model_bundle)
     else:
         st.markdown(
             '<div class="panel fine-print">Choose an image, then select <b>Analyze image</b> to view predictions.</div>',
@@ -158,6 +197,13 @@ with right:
         )
 
 st.markdown("---")
+st.markdown(
+    "**How to read the scores:** Each abnormality has its own linear SVM. Its raw decision "
+    "margin is `w*x + b`; the SVM's geometric boundary is margin `0`. The app uses a separate "
+    "validation-tuned cutoff for each label, so a label is selected when `margin >= cutoff`. "
+    "Margins and cutoffs are not probabilities. An uploaded image has no known actual label "
+    "unless it has been independently annotated."
+)
 st.markdown(
     '<p class="fine-print">Educational project only; not clinically validated and not for diagnosis or treatment. '
     'If hosted online, the selected image is processed by that hosting service. Do not upload identifiable or sensitive health images.</p>',

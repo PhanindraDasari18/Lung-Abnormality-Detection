@@ -19,12 +19,11 @@ artifacts/lung_svm_model.joblib
 README.md
 PROJECT_REPORT.md
 GITHUB_DEPLOYMENT.md
-REPORT_TEMPLATE.md
 ```
 
 Do not upload `images/`, `labels.csv`, `.venv/`, or cached HOG arrays. The web app only needs the trained model; the raw training set is not needed for a user's prediction. The `.gitignore` is set up to exclude those large inputs and caches while allowing the trained model and report figures/metrics into Git.
 
-The trained model is about 4.3 MB. Keep the scikit-learn, NumPy, and other dependency versions in `requirements.txt` aligned with the training environment because the model file was serialized with those packages.
+The current RBF-SVM model is about 72.5 MiB. Keep the scikit-learn, NumPy, and other dependency versions in `requirements.txt` aligned with the training environment because the model file was serialized with those packages.
 
 ## Upload using GitHub Desktop
 

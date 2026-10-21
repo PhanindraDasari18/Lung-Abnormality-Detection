@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.metrics import f1_score
 
 from . import DISEASES
@@ -19,8 +19,11 @@ def fit_preprocessor(x_train: np.ndarray, components: int = 256):
     return scaler, pca, pca.fit_transform(x_scaled).astype(np.float32, copy=False)
 
 
-def fit_classifiers(x: np.ndarray, y: np.ndarray) -> list[LinearSVC | None]:
-    """Fit one binary LinearSVC per class; absent/single-valued labels are skipped."""
+def fit_classifiers(x: np.ndarray, y: np.ndarray,
+                    classifier: str = "linear") -> list[LinearSVC | SVC | None]:
+    """Fit one binary SVM per class; absent/single-valued labels are skipped."""
+    if classifier not in {"linear", "rbf"}:
+        raise ValueError("classifier must be 'linear' or 'rbf'")
     models = []
     for column, name in enumerate(DISEASES):
         target = y[:, column]
@@ -29,7 +32,13 @@ def fit_classifiers(x: np.ndarray, y: np.ndarray) -> list[LinearSVC | None]:
             print(f"{name}: training split contains only {constant}; using constant prediction")
             models.append(constant)
             continue
-        model = LinearSVC(C=1.0, class_weight="balanced", max_iter=20000, random_state=42)
+        if classifier == "rbf":
+            model = SVC(
+                C=1.0, kernel="rbf", gamma="scale", class_weight="balanced",
+                cache_size=768, random_state=42,
+            )
+        else:
+            model = LinearSVC(C=1.0, class_weight="balanced", max_iter=20000, random_state=42)
         model.fit(x, target)
         models.append(model)
     return models
